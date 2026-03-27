@@ -21,7 +21,9 @@ STATUS_FILE = "/tmp/groq-voice-status"
 STATS_FILE = Path.home() / ".local/share/groq-voice/stats.json"
 ORIGINAL = os.path.expanduser("~/.local/bin/groq-voice")
 SHIMS_DIR = os.path.expanduser("~/.local/lib/groq-voice-shims")
-TAIL_DELAY = 1.5  # seconds to keep recording after stop hotkey
+
+TAIL_DELAY = 1.5        # seconds to keep recording after stop hotkey
+MAX_RECORDING_SECS = 5 * 60  # safeguard: auto-stop after this many seconds
 
 # Prepend shims dir so fake notify-send intercepts calls from the original script
 os.environ["PATH"] = SHIMS_DIR + ":" + os.environ.get("PATH", "")
@@ -51,7 +53,29 @@ def write_stats(duration_secs: int) -> None:
     STATS_FILE.write_text(json.dumps(stats, indent=2))
 
 
+def run_watchdog() -> None:
+    """Detached process: auto-stop recording if MAX_RECORDING_SECS is exceeded."""
+    time.sleep(MAX_RECORDING_SECS)
+    if not os.path.exists(PIDFILE):
+        return  # already stopped normally — nothing to do
+    write_status("recognizing")
+    try:
+        subprocess.run([ORIGINAL])
+        write_stats(MAX_RECORDING_SECS)
+    finally:
+        write_status("idle")
+        try:
+            os.remove(START_FILE)
+        except OSError:
+            pass
+
+
 def main():
+    # Internal mode: launched as background watchdog on recording start
+    if len(sys.argv) > 1 and sys.argv[1] == "--watchdog":
+        run_watchdog()
+        return
+
     if os.path.exists(PIDFILE):
         # Recording is already active — wait for tail, then stop and transcribe
         duration = 0
@@ -80,6 +104,16 @@ def main():
         except OSError:
             pass
         write_status("recording")
+
+        # Launch watchdog as detached background process
+        subprocess.Popen(
+            [sys.executable, os.path.abspath(__file__), "--watchdog"],
+            start_new_session=True,
+            close_fds=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+
         subprocess.run([ORIGINAL] + sys.argv[1:])
         # Status intentionally stays "recording" until next invocation
 
