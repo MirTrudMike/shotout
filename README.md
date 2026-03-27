@@ -1,151 +1,151 @@
 # ShotOUT
 
-Голосовой ввод для Fedora (GNOME, Wayland). Нажимаешь хоткей — говоришь — нажимаешь снова — текст вставляется в активное поле.
+Voice input for Fedora (GNOME, Wayland). Press a hotkey — speak — press again — text is pasted into the active field.
 
-Используется Groq Whisper API (быстро, точно, бесплатный tier есть).
+Powered by Groq Whisper API (fast, accurate, free tier available).
 
 ```
 ┌─────────────────────────────────────────────┐
 │  Activities   [App name]        🎤  ···  EN │  ← idle
-│  Activities   [App name]       🎙 0:07  ···  │  ← запись
-│  Activities   [App name]  ⏳ RECOGNIZING ··· │  ← распознавание
-│  Activities   [App name]        ✗  ···  EN  │  ← отмена
+│  Activities   [App name]       🎙 0:07  ···  │  ← recording
+│  Activities   [App name]  ⏳ RECOGNIZING ··· │  ← transcribing
+│  Activities   [App name]        ✗  ···  EN  │  ← cancelled
 └─────────────────────────────────────────────┘
 ```
 
-## Требования
+## Requirements
 
-- Fedora 39+ с GNOME 45+
-- Wayland-сессия
-- Groq API key (бесплатная регистрация)
+- Fedora 39+ with GNOME 45+
+- Wayland session
+- Groq API key (free registration)
 
-## Шаг 0: Получить Groq API key
+## Step 0: Get a Groq API key
 
-1. Зайти на [console.groq.com](https://console.groq.com)
-2. Зарегистрироваться → API Keys → Create API key
-3. Скопировать ключ — он понадобится при установке
+1. Go to [console.groq.com](https://console.groq.com)
+2. Sign up → API Keys → Create API key
+3. Copy the key — you'll need it during installation
 
-## Установка
+## Installation
 
-### Одной командой
+### One-liner
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/shotout/main/install.sh)
 ```
 
-Скрипт:
-- Проверит зависимости и подскажет как установить недостающие
-- Установит Python-пакет `groq` если нужно
-- Спросит Groq API key и сохранит в `~/.config/shotout/key`
-- Скопирует файлы в нужные места
-- Включит GNOME расширение
+The script will:
+- Check dependencies and suggest how to install any missing ones
+- Install the `groq` Python package if needed
+- Ask for your Groq API key and save it to `~/.config/shotout/key`
+- Copy files to the right places
+- Enable the GNOME extension
 
-### Зависимости (устанавливаются вручную если нет)
+### Dependencies (install manually if missing)
 
 ```bash
 sudo dnf install sox wl-clipboard ydotool python3
 sudo systemctl enable --now ydotoold
 ```
 
-### После установки — обязательно
+### After installation
 
-Включить daemon для симуляции клавиш:
+Enable the keyboard input simulation daemon:
 ```bash
 sudo systemctl enable --now ydotoold
 ```
 
-Перелогиниться (или перезапустить GNOME Shell), чтобы появился индикатор 🎤 в top bar.
+Log out and back in so the 🎤 indicator appears in the top bar.
 
-## Назначить хоткей
+## Assign a hotkey
 
 **GNOME Settings → Keyboard → View and Customize Shortcuts → Custom Shortcuts → +**
 
-| Поле     | Значение                                        |
-|----------|-------------------------------------------------|
-| Name     | ShotOUT                                         |
-| Command  | `/home/YOUR_LINUX_USERNAME/.local/bin/shotout-wrapper` |
-| Shortcut | Super+R  (или любой другой)                     |
+| Field    | Value                                                    |
+|----------|----------------------------------------------------------|
+| Name     | ShotOUT                                                  |
+| Command  | `/home/YOUR_LINUX_USERNAME/.local/bin/shotout-wrapper`   |
+| Shortcut | Super+R (or anything you like)                           |
 
-> Используйте полный путь в Command, а не просто `shotout-wrapper` — GNOME не видит `~/.local/bin` в своём PATH при запуске хоткеев.
+> Use the full path in Command, not just `shotout-wrapper` — GNOME does not include `~/.local/bin` in its PATH when executing hotkey commands.
 
-## Использование
+## Usage
 
-| Действие | Что происходит |
-|----------|----------------|
-| Хоткей (первый раз) | Начинает запись. Индикатор: 🎙 0:07 |
-| Хоткей (второй раз) | Останавливает запись, отправляет в Whisper, вставляет текст |
-| Клик на 🎤 во время записи | Отменяет запись без транскрибации. Индикатор: ✗ |
-| Клик на 🎤 в idle | Открывает меню со статистикой |
+| Action | Result |
+|--------|--------|
+| Hotkey (first press) | Start recording. Indicator: 🎙 0:07 |
+| Hotkey (second press) | Stop recording → transcribe → paste text |
+| Click 🎤 during recording | Cancel without transcription. Indicator: ✗ |
+| Click 🎤 while idle | Open stats menu |
 
-## Индикатор в top bar
+## Top bar indicator
 
-| Иконка | Состояние |
-|--------|-----------|
-| 🎤 | Ожидание (idle) |
-| 🎙 0:07 | Запись, таймер в минутах:секундах |
-| 🎙 *оранжевый пульс* | Осталось меньше 10 секунд до лимита |
-| ⏳ RECOGNIZING | Идёт распознавание |
-| ✗ | Запись отменена (на ~2 секунды) |
+| Icon | State |
+|------|-------|
+| 🎤 | Idle |
+| 🎙 0:07 | Recording, timer in m:ss |
+| 🎙 *orange pulse* | Less than 10 seconds left before the recording limit |
+| ⏳ RECOGNIZING | Transcription in progress |
+| ✗ | Recording cancelled (~2 seconds) |
 
-Меню (клик в idle): статистика за сегодня и за месяц — количество запросов и суммарное время записи.
+The idle menu shows today's and this month's stats: request count and total recorded time.
 
-## Настройка параметров
+## Configuration
 
-Параметры находятся в двух файлах:
+Parameters live in two files:
 
-### `~/.local/bin/shotout-wrapper` — параметры записи
+### `~/.local/bin/shotout-wrapper` — recording settings
 
 ```python
-TAIL_DELAY         = 1.5      # секунды дозаписи после нажатия стоп (чтобы захватить последние слова)
-MAX_RECORDING_SECS = 5 * 60  # авто-стоп через это время (секунды)
+TAIL_DELAY         = 1.5      # extra seconds of recording after stop hotkey (catches last words)
+MAX_RECORDING_SECS = 5 * 60  # auto-stop after this many seconds
 ```
 
-### `~/.local/share/gnome-shell/extensions/shotout@local/extension.js` — параметры индикатора
+### `~/.local/share/gnome-shell/extensions/shotout@local/extension.js` — indicator settings
 
 ```javascript
-const WARNING_SECS = 10;  // за сколько секунд до лимита начинать оранжевый пульс
+const WARNING_SECS = 10;  // seconds before the limit when the orange pulse starts
 ```
 
-### Применение изменений
+### Applying changes
 
-**`shotout-wrapper`** — изменения применяются немедленно, скрипт читается при каждом запуске. Перезапускать ничего не нужно.
+**`shotout-wrapper`** — changes take effect immediately on the next run. No restart needed.
 
-**`extension.js`** — GNOME Shell кэширует расширение. После изменения нужно перезагрузить расширение:
+**`extension.js`** — GNOME Shell caches the extension. After editing, reload it:
 
 ```bash
 gnome-extensions disable shotout@local
 gnome-extensions enable shotout@local
 ```
 
-На Wayland Alt+F2 не работает, поэтому единственный надёжный способ — перелогиниться.
+On Wayland, Alt+F2 is not available, so the only reliable way is to log out and back in.
 
-## Структура файлов
+## File layout
 
 ```
-~/.local/bin/shotout              — основной скрипт (sox + Groq API)
-~/.local/bin/shotout-wrapper      — обёртка (статус, watchdog, статистика)
+~/.local/bin/shotout              — main script (sox + Groq API)
+~/.local/bin/shotout-wrapper      — wrapper (status, watchdog, stats)
 ~/.local/share/gnome-shell/extensions/shotout@local/
-    extension.js                  — GNOME Shell расширение
+    extension.js                  — GNOME Shell extension
     metadata.json
 ~/.config/shotout/key             — Groq API key
-~/.local/share/shotout/stats.json — статистика
+~/.local/share/shotout/stats.json — usage stats
 ```
 
-## Как работает внутри
+## How it works
 
-1. Хоткей запускает `shotout-wrapper`
-2. Wrapper пишет статус в `/tmp/shotout-status` (recording / recognizing / idle)
-3. Запускает `shotout` (запись через `sox`) и фоновый watchdog
-4. Watchdog следит за `/tmp/shotout-cancel` (клик отмены) и лимитом времени
-5. При стопе: TAIL_DELAY секунд дозаписи → `shotout` отправляет аудио в Groq API → `wl-copy` + `ydotool` вставляет текст
-6. Расширение читает `/tmp/shotout-status` каждые 500ms и обновляет индикатор
+1. Hotkey runs `shotout-wrapper`
+2. Wrapper writes status to `/tmp/shotout-status` (recording / recognizing / idle)
+3. Starts `shotout` (records via `sox`) and a background watchdog process
+4. Watchdog watches `/tmp/shotout-cancel` (cancel click) and the time limit
+5. On stop: TAIL_DELAY seconds of extra recording → `shotout` sends audio to Groq API → `wl-copy` + `ydotool` pastes the text
+6. The extension reads `/tmp/shotout-status` every 500ms and updates the indicator
 
-## Обновление
+## Updating
 
-Просто запустить установщик снова — он перезапишет файлы:
+Just run the installer again — it will overwrite the files:
 
 ```bash
 bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/shotout/main/install.sh)
 ```
 
-API key при этом будет предложено сохранить или оставить старый.
+Your API key will be kept unless you choose to replace it.

@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-ShotOUT — Toggle-режим.
-Первый запуск: начинает запись.
-Второй запуск: останавливает запись, отправляет в Whisper, вставляет текст.
+ShotOUT — toggle mode.
+First run: start recording.
+Second run: stop recording, send to Whisper, paste transcribed text.
 """
 import os
 import sys
@@ -71,7 +71,7 @@ def stop_and_transcribe():
         text = result.strip() if isinstance(result, str) else result.text.strip()
 
         if text:
-            # wl-copy — нативный Wayland буфер, ydotool — нативная Wayland симуляция клавиш
+            # wl-copy writes to the native Wayland clipboard, ydotool simulates Ctrl+V
             time.sleep(0.2)
             proc = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE)
             proc.communicate(input=text.encode("utf-8"))

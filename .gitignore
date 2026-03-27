@@ -5,10 +5,10 @@ __pycache__/
 .venv/
 venv/
 
-# Временные файлы записи
+# Temp recording files
 /tmp/groq-voice*
 
-# Ключи и секреты
+# Secrets
 *.key
 key
 .env
