@@ -30,7 +30,7 @@ Powered by Groq Whisper API (fast, accurate, free tier available).
 ### One-liner
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/shotout/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/MirTrudMike/shotout/main/install.sh)
 ```
 
 The script will:
@@ -145,7 +145,7 @@ On Wayland, Alt+F2 is not available, so the only reliable way is to log out and 
 Just run the installer again — it will overwrite the files:
 
 ```bash
-bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/shotout/main/install.sh)
+bash <(curl -fsSL https://raw.githubusercontent.com/MirTrudMike/shotout/main/install.sh)
 ```
 
 Your API key will be kept unless you choose to replace it.

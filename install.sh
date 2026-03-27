@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # ShotOUT — installer
-# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/YOUR_USERNAME/shotout/main/install.sh)
+# Usage: bash <(curl -fsSL https://raw.githubusercontent.com/MirTrudMike/shotout/main/install.sh)
 set -euo pipefail
 
-REPO_URL="https://github.com/YOUR_USERNAME/shotout"
+REPO_URL="https://github.com/MirTrudMike/shotout"
 EXT_UUID="shotout@local"
 EXT_DIR="$HOME/.local/share/gnome-shell/extensions/$EXT_UUID"
 BIN_DIR="$HOME/.local/bin"
