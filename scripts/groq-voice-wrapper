@@ -1,0 +1,47 @@
+#!/usr/bin/env python3
+"""
+Wrapper around ~/.local/bin/groq-voice that writes status to
+/tmp/groq-voice-status so the GNOME Shell extension can display
+a visual indicator in the top bar.
+
+Usage: replace the hotkey command groq-voice → groq-voice-wrapper
+The original script is never modified.
+"""
+import os
+import subprocess
+import sys
+
+PIDFILE = "/tmp/groq-voice.pid"
+STATUS_FILE = "/tmp/groq-voice-status"
+ORIGINAL = os.path.expanduser("~/.local/bin/groq-voice")
+SHIMS_DIR = os.path.expanduser("~/.local/lib/groq-voice-shims")
+
+# Prepend shims dir so fake notify-send intercepts calls from the original script
+os.environ["PATH"] = SHIMS_DIR + ":" + os.environ.get("PATH", "")
+
+
+def write_status(status: str) -> None:
+    try:
+        with open(STATUS_FILE, "w") as f:
+            f.write(status)
+    except OSError:
+        pass
+
+
+def main():
+    if os.path.exists(PIDFILE):
+        # Recording is already active — next invocation stops and transcribes
+        write_status("recognizing")
+        try:
+            subprocess.run([ORIGINAL] + sys.argv[1:])
+        finally:
+            write_status("idle")
+    else:
+        # No recording active — start one
+        write_status("recording")
+        subprocess.run([ORIGINAL] + sys.argv[1:])
+        # Status intentionally stays "recording" until next invocation
+
+
+if __name__ == "__main__":
+    main()

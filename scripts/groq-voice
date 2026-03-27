@@ -1,0 +1,91 @@
+#!/usr/bin/env python3
+"""
+Groq Voice Input — Toggle-режим.
+Первый запуск: начинает запись + показывает уведомление.
+Второй запуск: останавливает запись, отправляет в Whisper, вставляет текст.
+"""
+import os
+import sys
+import time
+import signal
+import subprocess
+
+PIDFILE = "/tmp/groq-voice.pid"
+AUDIOFILE = "/tmp/groq-voice-audio.wav"
+KEYFILE = os.path.expanduser("~/.config/groq-voice/key")
+
+
+def get_api_key():
+    key = os.environ.get("GROQ_API_KEY")
+    if key:
+        return key
+    if os.path.exists(KEYFILE):
+        with open(KEYFILE) as f:
+            return f.read().strip()
+    raise RuntimeError(f"API key not found. Put it in {KEYFILE}")
+
+
+def start_recording():
+    for f in [AUDIOFILE]:
+        if os.path.exists(f):
+            os.remove(f)
+
+    proc = subprocess.Popen(
+        ["sox", "-d", "-r", "16000", "-c", "1", AUDIOFILE],
+        stderr=subprocess.DEVNULL,
+    )
+    with open(PIDFILE, "w") as f:
+        f.write(str(proc.pid))
+
+
+def stop_and_transcribe():
+    if not os.path.exists(PIDFILE):
+        return
+
+    with open(PIDFILE) as f:
+        pid = int(f.read().strip())
+    os.remove(PIDFILE)
+
+    try:
+        os.kill(pid, signal.SIGTERM)
+    except ProcessLookupError:
+        pass
+
+    time.sleep(0.4)
+
+    if not os.path.exists(AUDIOFILE) or os.path.getsize(AUDIOFILE) < 1000:
+        return
+
+    try:
+        from groq import Groq
+
+        client = Groq(api_key=get_api_key())
+        with open(AUDIOFILE, "rb") as af:
+            result = client.audio.transcriptions.create(
+                file=("audio.wav", af.read()),
+                model="whisper-large-v3",
+                response_format="text",
+                prompt="Сегодня работаю над новым project, это очень interesting. The deadline is tomorrow. Tengo mucho trabajo hoy, но справлюсь. Mañana será otro día.",
+            )
+
+        text = result.strip() if isinstance(result, str) else result.text.strip()
+
+        if text:
+            # wl-copy — нативный Wayland буфер, ydotool — нативная Wayland симуляция клавиш
+            time.sleep(0.2)
+            proc = subprocess.Popen(["wl-copy"], stdin=subprocess.PIPE)
+            proc.communicate(input=text.encode("utf-8"))
+            time.sleep(0.1)
+            subprocess.run(["ydotool", "key", "29:1", "47:1", "47:0", "29:0"])
+    except Exception as e:
+        print(f"Error: {e}", file=sys.stderr)
+    finally:
+        if os.path.exists(AUDIOFILE):
+            os.remove(AUDIOFILE)
+
+
+if __name__ == "__main__":
+    if os.path.exists(PIDFILE):
+        stop_and_transcribe()
+    else:
+        start_recording()
