@@ -9,12 +9,14 @@ import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const STATUS_FILE = '/tmp/groq-voice-status';
 const LIMIT_FILE  = '/tmp/groq-voice-limit';
+const CANCEL_FILE = '/tmp/groq-voice-cancel';
 const STATS_FILE  = GLib.get_home_dir() + '/.local/share/groq-voice/stats.json';
 const POLL_INTERVAL_MS = 500;
 const WARNING_SECS     = 10;   // start pulsing this many seconds before the limit
 
-const LABEL_STYLE      = 'font-size: 13px; padding: 0 6px;';
-const LABEL_STYLE_WARN = 'font-size: 13px; padding: 0 6px; color: #ff7700;';
+const LABEL_STYLE        = 'font-size: 13px; padding: 0 6px;';
+const LABEL_STYLE_WARN   = 'font-size: 13px; padding: 0 6px; color: #ff7700;';
+const LABEL_STYLE_CANCEL = 'font-size: 13px; padding: 0 6px; color: #cc4444;';
 
 const VoiceIndicator = GObject.registerClass(
 class VoiceIndicator extends PanelMenu.Button {
@@ -37,6 +39,29 @@ class VoiceIndicator extends PanelMenu.Button {
         this._timeoutId = null;
 
         this.show();
+    }
+
+    // ── Cancel on click during recording ────────────────────────────────────
+
+    // During recording, a click cancels instead of opening the menu.
+    vfunc_event(event) {
+        if (this._status === 'recording' &&
+            (event.type() === Clutter.EventType.BUTTON_PRESS ||
+             event.type() === Clutter.EventType.TOUCH_BEGIN)) {
+            this._cancelRecording();
+            return Clutter.EVENT_STOP;
+        }
+        return super.vfunc_event(event);
+    }
+
+    _cancelRecording() {
+        try {
+            GLib.file_set_contents(CANCEL_FILE, '1');
+        } catch (_e) {}
+        this._stopWarningPulse();
+        this._label.set_text('✗');
+        this._label.style = LABEL_STYLE_CANCEL;
+        // Status → idle will arrive via polling once watchdog handles the cancel
     }
 
     // ── Menu ────────────────────────────────────────────────────────────────

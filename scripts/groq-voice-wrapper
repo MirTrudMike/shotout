@@ -9,31 +9,57 @@ The original script is never modified.
 """
 import json
 import os
+import signal
 import subprocess
 import sys
 import time
 from datetime import date
 from pathlib import Path
 
-PIDFILE = "/tmp/groq-voice.pid"
-START_FILE = "/tmp/groq-voice-start"
-LIMIT_FILE = "/tmp/groq-voice-limit"
+PIDFILE     = "/tmp/groq-voice.pid"
+START_FILE  = "/tmp/groq-voice-start"
+LIMIT_FILE  = "/tmp/groq-voice-limit"
+CANCEL_FILE = "/tmp/groq-voice-cancel"
 STATUS_FILE = "/tmp/groq-voice-status"
-STATS_FILE = Path.home() / ".local/share/groq-voice/stats.json"
-ORIGINAL = os.path.expanduser("~/.local/bin/groq-voice")
-SHIMS_DIR = os.path.expanduser("~/.local/lib/groq-voice-shims")
+STATS_FILE  = Path.home() / ".local/share/groq-voice/stats.json"
+ORIGINAL    = os.path.expanduser("~/.local/bin/groq-voice")
+SHIMS_DIR   = os.path.expanduser("~/.local/lib/groq-voice-shims")
 
-TAIL_DELAY = 1.5        # seconds to keep recording after stop hotkey
-MAX_RECORDING_SECS = 5 * 60  # safeguard: auto-stop after this many seconds
+TAIL_DELAY         = 1.5      # seconds to keep recording after stop hotkey
+MAX_RECORDING_SECS = 1 * 60  # safeguard: auto-stop after this many seconds
 
 # Prepend shims dir so fake notify-send intercepts calls from the original script
 os.environ["PATH"] = SHIMS_DIR + ":" + os.environ.get("PATH", "")
+
+TEMP_FILES = (START_FILE, LIMIT_FILE, CANCEL_FILE)
 
 
 def write_status(status: str) -> None:
     try:
         with open(STATUS_FILE, "w") as f:
             f.write(status)
+    except OSError:
+        pass
+
+
+def cleanup_temp_files() -> None:
+    for f in TEMP_FILES:
+        try:
+            os.remove(f)
+        except OSError:
+            pass
+
+
+def kill_sox() -> None:
+    """Kill the sox process recorded in PIDFILE without transcribing."""
+    try:
+        with open(PIDFILE) as f:
+            pid = int(f.read().strip())
+        os.kill(pid, signal.SIGTERM)
+    except (OSError, ValueError, ProcessLookupError):
+        pass
+    try:
+        os.remove(PIDFILE)
     except OSError:
         pass
 
@@ -55,21 +81,30 @@ def write_stats(duration_secs: int) -> None:
 
 
 def run_watchdog() -> None:
-    """Detached process: auto-stop recording if MAX_RECORDING_SECS is exceeded."""
-    time.sleep(MAX_RECORDING_SECS)
+    """Detached process: polls every second to handle cancel or auto-stop."""
+    for _ in range(MAX_RECORDING_SECS):
+        time.sleep(1)
+
+        if not os.path.exists(PIDFILE):
+            return  # stopped normally by user hotkey
+
+        if os.path.exists(CANCEL_FILE):
+            # User cancelled via extension click — kill sox, no transcription
+            kill_sox()
+            write_status("idle")
+            cleanup_temp_files()
+            return
+
+    # Time limit reached — auto-stop with transcription
     if not os.path.exists(PIDFILE):
-        return  # already stopped normally — nothing to do
+        return
     write_status("recognizing")
     try:
         subprocess.run([ORIGINAL])
         write_stats(MAX_RECORDING_SECS)
     finally:
         write_status("idle")
-        for f in (START_FILE, LIMIT_FILE):
-            try:
-                os.remove(f)
-            except OSError:
-                pass
+        cleanup_temp_files()
 
 
 def main():
@@ -88,17 +123,20 @@ def main():
             pass
 
         time.sleep(TAIL_DELAY)  # keep recording so last words are captured
+
+        if not os.path.exists(PIDFILE):
+            # Cancelled by watchdog during tail delay — nothing to do
+            write_status("idle")
+            cleanup_temp_files()
+            return
+
         write_status("recognizing")
         try:
             subprocess.run([ORIGINAL] + sys.argv[1:])
             write_stats(duration)
         finally:
             write_status("idle")
-            for f in (START_FILE, LIMIT_FILE):
-                try:
-                    os.remove(f)
-                except OSError:
-                    pass
+            cleanup_temp_files()
     else:
         # No recording active — start one
         try:
@@ -106,7 +144,6 @@ def main():
                 f.write(str(time.time()))
         except OSError:
             pass
-        write_status("recording")
 
         # Tell the extension what the recording limit is (for warning pulse)
         try:
@@ -114,6 +151,8 @@ def main():
                 f.write(str(MAX_RECORDING_SECS))
         except OSError:
             pass
+
+        write_status("recording")
 
         # Launch watchdog as detached background process
         subprocess.Popen(
