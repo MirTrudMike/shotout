@@ -8,8 +8,13 @@ import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const STATUS_FILE = '/tmp/groq-voice-status';
-const STATS_FILE = GLib.get_home_dir() + '/.local/share/groq-voice/stats.json';
+const LIMIT_FILE  = '/tmp/groq-voice-limit';
+const STATS_FILE  = GLib.get_home_dir() + '/.local/share/groq-voice/stats.json';
 const POLL_INTERVAL_MS = 500;
+const WARNING_SECS     = 10;   // start pulsing this many seconds before the limit
+
+const LABEL_STYLE      = 'font-size: 13px; padding: 0 6px;';
+const LABEL_STYLE_WARN = 'font-size: 13px; padding: 0 6px; color: #ff7700;';
 
 const VoiceIndicator = GObject.registerClass(
 class VoiceIndicator extends PanelMenu.Button {
@@ -19,7 +24,7 @@ class VoiceIndicator extends PanelMenu.Button {
         this._label = new St.Label({
             text: '🎤',
             y_align: Clutter.ActorAlign.CENTER,
-            style: 'font-size: 13px; padding: 0 6px;',
+            style: LABEL_STYLE,
         });
         this.add_child(this._label);
 
@@ -27,36 +32,28 @@ class VoiceIndicator extends PanelMenu.Button {
 
         this._status = 'idle';
         this._recordingStartSec = 0;
+        this._recordingLimitSec = 5 * 60;
+        this._pulsing = false;
         this._timeoutId = null;
 
         this.show();
     }
 
-    // Creates a two-column stat row: "Label" on the left, "value" bold on the right.
-    // reactive:false + explicit opacity:1 prevents GNOME's :insensitive greying.
+    // ── Menu ────────────────────────────────────────────────────────────────
+
     _makeStatRow(labelText) {
         const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
         item.style = 'opacity: 1;';
 
-        const nameLabel = new St.Label({
-            text: labelText,
-            x_expand: true,
-            style_class: 'dim-label',
-        });
-
-        const valueLabel = new St.Label({
-            text: '—',
-            style: 'font-weight: bold;',
-        });
+        const nameLabel = new St.Label({text: labelText, x_expand: true, style_class: 'dim-label'});
+        const valueLabel = new St.Label({text: '—', style: 'font-weight: bold;'});
 
         item.add_child(nameLabel);
         item.add_child(valueLabel);
-
         return {item, valueLabel};
     }
 
     _buildMenu() {
-        // Standard GNOME section header with separator line
         this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Groq Voice'));
 
         const todayRow = this._makeStatRow('Today');
@@ -76,8 +73,7 @@ class VoiceIndicator extends PanelMenu.Button {
         try {
             const file = Gio.File.new_for_path(STATS_FILE);
             const [ok, contents] = file.load_contents(null);
-            if (ok)
-                return JSON.parse(new TextDecoder().decode(contents));
+            if (ok) return JSON.parse(new TextDecoder().decode(contents));
         } catch (_e) {}
         return {};
     }
@@ -98,28 +94,54 @@ class VoiceIndicator extends PanelMenu.Button {
         const monthPrefix = today.slice(0, 7);
 
         const td = stats[today] || {requests: 0, seconds: 0};
-        this._todayValue.set_text(
-            `${td.requests} req · ${this._formatDuration(td.seconds)}`
-        );
+        this._todayValue.set_text(`${td.requests} req · ${this._formatDuration(td.seconds)}`);
 
         let mReq = 0, mSec = 0;
         for (const [d, v] of Object.entries(stats)) {
-            if (d.startsWith(monthPrefix)) {
-                mReq += v.requests;
-                mSec += v.seconds;
-            }
+            if (d.startsWith(monthPrefix)) { mReq += v.requests; mSec += v.seconds; }
         }
-        this._monthValue.set_text(
-            `${mReq} req · ${this._formatDuration(mSec)}`
-        );
+        this._monthValue.set_text(`${mReq} req · ${this._formatDuration(mSec)}`);
     }
 
-    startPolling() {
-        if (this._timeoutId !== null)
+    // ── Warning pulse ────────────────────────────────────────────────────────
+
+    _startWarningPulse() {
+        if (this._pulsing) return;
+        this._pulsing = true;
+        this._label.style = LABEL_STYLE_WARN;
+        this._pulseStep(true);
+    }
+
+    _pulseStep(fadingOut) {
+        if (!this._pulsing) {
+            // Stopped externally — restore immediately
+            this._label.remove_all_transitions();
+            this._label.opacity = 255;
+            this._label.style = LABEL_STYLE;
             return;
+        }
+        this._label.ease({
+            opacity: fadingOut ? 55 : 255,
+            duration: 800,
+            mode: Clutter.AnimationMode.EASE_IN_OUT_SINE,
+            onComplete: () => this._pulseStep(!fadingOut),
+        });
+    }
+
+    _stopWarningPulse() {
+        if (!this._pulsing) return;
+        this._pulsing = false;
+        this._label.remove_all_transitions();
+        this._label.opacity = 255;
+        this._label.style = LABEL_STYLE;
+    }
+
+    // ── Polling ──────────────────────────────────────────────────────────────
+
+    startPolling() {
+        if (this._timeoutId !== null) return;
         this._timeoutId = GLib.timeout_add(
-            GLib.PRIORITY_DEFAULT,
-            POLL_INTERVAL_MS,
+            GLib.PRIORITY_DEFAULT, POLL_INTERVAL_MS,
             () => { this._poll(); return GLib.SOURCE_CONTINUE; }
         );
     }
@@ -135,10 +157,18 @@ class VoiceIndicator extends PanelMenu.Button {
         try {
             const file = Gio.File.new_for_path(STATUS_FILE);
             const [ok, contents] = file.load_contents(null);
-            if (ok)
-                return new TextDecoder().decode(contents).trim();
+            if (ok) return new TextDecoder().decode(contents).trim();
         } catch (_e) {}
         return 'idle';
+    }
+
+    _readLimit() {
+        try {
+            const file = Gio.File.new_for_path(LIMIT_FILE);
+            const [ok, contents] = file.load_contents(null);
+            if (ok) return parseInt(new TextDecoder().decode(contents).trim(), 10);
+        } catch (_e) {}
+        return 5 * 60; // fallback if file missing
     }
 
     _poll() {
@@ -149,17 +179,20 @@ class VoiceIndicator extends PanelMenu.Button {
 
             if (status === 'recording') {
                 this._recordingStartSec = GLib.get_real_time() / 1_000_000;
-            } else if (status === 'recognizing') {
-                this._label.set_text('⏳ Recognizing...');
+                this._recordingLimitSec = this._readLimit();
             } else {
-                this._label.set_text('🎤');
+                this._stopWarningPulse();
+                this._label.set_text(status === 'recognizing' ? '⏳ RECOGNIZING' : '🎤');
             }
         }
 
         if (this._status === 'recording') {
-            const elapsed = Math.floor(
-                GLib.get_real_time() / 1_000_000 - this._recordingStartSec
-            );
+            const elapsed = Math.floor(GLib.get_real_time() / 1_000_000 - this._recordingStartSec);
+            const remaining = this._recordingLimitSec - elapsed;
+
+            if (remaining <= WARNING_SECS && !this._pulsing)
+                this._startWarningPulse();
+
             const m = Math.floor(elapsed / 60);
             const s = (elapsed % 60).toString().padStart(2, '0');
             this._label.set_text(`🎙 ${m}:${s}`);
@@ -167,6 +200,7 @@ class VoiceIndicator extends PanelMenu.Button {
     }
 
     destroy() {
+        this._stopWarningPulse();
         this.stopPolling();
         super.destroy();
     }

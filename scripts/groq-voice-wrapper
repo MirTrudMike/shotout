@@ -17,6 +17,7 @@ from pathlib import Path
 
 PIDFILE = "/tmp/groq-voice.pid"
 START_FILE = "/tmp/groq-voice-start"
+LIMIT_FILE = "/tmp/groq-voice-limit"
 STATUS_FILE = "/tmp/groq-voice-status"
 STATS_FILE = Path.home() / ".local/share/groq-voice/stats.json"
 ORIGINAL = os.path.expanduser("~/.local/bin/groq-voice")
@@ -64,10 +65,11 @@ def run_watchdog() -> None:
         write_stats(MAX_RECORDING_SECS)
     finally:
         write_status("idle")
-        try:
-            os.remove(START_FILE)
-        except OSError:
-            pass
+        for f in (START_FILE, LIMIT_FILE):
+            try:
+                os.remove(f)
+            except OSError:
+                pass
 
 
 def main():
@@ -92,10 +94,11 @@ def main():
             write_stats(duration)
         finally:
             write_status("idle")
-            try:
-                os.remove(START_FILE)
-            except OSError:
-                pass
+            for f in (START_FILE, LIMIT_FILE):
+                try:
+                    os.remove(f)
+                except OSError:
+                    pass
     else:
         # No recording active — start one
         try:
@@ -104,6 +107,13 @@ def main():
         except OSError:
             pass
         write_status("recording")
+
+        # Tell the extension what the recording limit is (for warning pulse)
+        try:
+            with open(LIMIT_FILE, "w") as f:
+                f.write(str(MAX_RECORDING_SECS))
+        except OSError:
+            pass
 
         # Launch watchdog as detached background process
         subprocess.Popen(
