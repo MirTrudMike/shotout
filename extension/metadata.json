@@ -1,7 +1,7 @@
 {
-  "name": "Groq Voice Indicator",
-  "description": "Visual indicator in top bar for groq-voice recording/recognition status",
-  "uuid": "groq-voice@local",
+  "name": "ShotOUT",
+  "description": "Voice input indicator for GNOME top bar",
+  "uuid": "shotout@local",
   "version": 1,
   "shell-version": ["45", "46", "47", "48", "49"]
 }

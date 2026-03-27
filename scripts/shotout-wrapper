@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-Wrapper around ~/.local/bin/groq-voice that writes status to
-/tmp/groq-voice-status so the GNOME Shell extension can display
+Wrapper around ~/.local/bin/shotout that writes status to
+/tmp/shotout-status so the GNOME Shell extension can display
 a visual indicator in the top bar.
 
-Usage: replace the hotkey command groq-voice → groq-voice-wrapper
+Usage: assign this as the hotkey command instead of shotout directly.
 The original script is never modified.
 """
 import json
@@ -16,17 +16,17 @@ import time
 from datetime import date
 from pathlib import Path
 
-PIDFILE     = "/tmp/groq-voice.pid"
-START_FILE  = "/tmp/groq-voice-start"
-LIMIT_FILE  = "/tmp/groq-voice-limit"
-CANCEL_FILE = "/tmp/groq-voice-cancel"
-STATUS_FILE = "/tmp/groq-voice-status"
-STATS_FILE  = Path.home() / ".local/share/groq-voice/stats.json"
-ORIGINAL    = os.path.expanduser("~/.local/bin/groq-voice")
-SHIMS_DIR   = os.path.expanduser("~/.local/lib/groq-voice-shims")
+PIDFILE     = "/tmp/shotout.pid"
+START_FILE  = "/tmp/shotout-start"
+LIMIT_FILE  = "/tmp/shotout-limit"
+CANCEL_FILE = "/tmp/shotout-cancel"
+STATUS_FILE = "/tmp/shotout-status"
+STATS_FILE  = Path.home() / ".local/share/shotout/stats.json"
+ORIGINAL    = os.path.expanduser("~/.local/bin/shotout")
+SHIMS_DIR   = os.path.expanduser("~/.local/lib/shotout-shims")
 
 TAIL_DELAY         = 1.5      # seconds to keep recording after stop hotkey
-MAX_RECORDING_SECS = 1 * 60  # safeguard: auto-stop after this many seconds
+MAX_RECORDING_SECS = 5 * 60  # safeguard: auto-stop after this many seconds
 
 # Prepend shims dir so fake notify-send intercepts calls from the original script
 os.environ["PATH"] = SHIMS_DIR + ":" + os.environ.get("PATH", "")

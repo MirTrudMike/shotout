@@ -7,10 +7,10 @@ import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
 import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
-const STATUS_FILE = '/tmp/groq-voice-status';
-const LIMIT_FILE  = '/tmp/groq-voice-limit';
-const CANCEL_FILE = '/tmp/groq-voice-cancel';
-const STATS_FILE  = GLib.get_home_dir() + '/.local/share/groq-voice/stats.json';
+const STATUS_FILE = '/tmp/shotout-status';
+const LIMIT_FILE  = '/tmp/shotout-limit';
+const CANCEL_FILE = '/tmp/shotout-cancel';
+const STATS_FILE  = GLib.get_home_dir() + '/.local/share/shotout/stats.json';
 const POLL_INTERVAL_MS = 500;
 const WARNING_SECS     = 10;   // start pulsing this many seconds before the limit
 
@@ -21,7 +21,7 @@ const LABEL_STYLE_X    = 'font-size: 18px; padding: 0 6px; color: #cc4444;';
 const VoiceIndicator = GObject.registerClass(
 class VoiceIndicator extends PanelMenu.Button {
     _init() {
-        super._init(0.0, 'Groq Voice', false);
+        super._init(0.0, 'ShotOUT', false);
 
         this._label = new St.Label({
             text: '🎤',
@@ -124,7 +124,7 @@ class VoiceIndicator extends PanelMenu.Button {
     }
 
     _buildMenu() {
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Groq Voice'));
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('ShotOUT'));
 
         const todayRow = this._makeStatRow('Today');
         this._todayValue = todayRow.valueLabel;
@@ -264,7 +264,7 @@ class VoiceIndicator extends PanelMenu.Button {
                 // Don't interrupt cancel animation — it will restore 🎤 on its own
                 if (!this._cancelAnimating) {
                     this._resetLabelStyle();
-                    this._label.set_text(status === 'recognizing' ? '⏳ Recognizing...' : '🎤');
+                    this._label.set_text(status === 'recognizing' ? '⏳ RECOGNIZING' : '🎤');
                 }
             }
         }
@@ -298,7 +298,7 @@ export default class VoiceInputExtension {
 
     enable() {
         this._indicator = new VoiceIndicator();
-        Main.panel.addToStatusArea('groq-voice-indicator', this._indicator);
+        Main.panel.addToStatusArea('shotout-indicator', this._indicator);
         this._indicator.startPolling();
     }
 

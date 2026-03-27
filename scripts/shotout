@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Groq Voice Input — Toggle-режим.
-Первый запуск: начинает запись + показывает уведомление.
+ShotOUT — Toggle-режим.
+Первый запуск: начинает запись.
 Второй запуск: останавливает запись, отправляет в Whisper, вставляет текст.
 """
 import os
@@ -10,9 +10,9 @@ import time
 import signal
 import subprocess
 
-PIDFILE = "/tmp/groq-voice.pid"
-AUDIOFILE = "/tmp/groq-voice-audio.wav"
-KEYFILE = os.path.expanduser("~/.config/groq-voice/key")
+PIDFILE = "/tmp/shotout.pid"
+AUDIOFILE = "/tmp/shotout-audio.wav"
+KEYFILE = os.path.expanduser("~/.config/shotout/key")
 
 
 def get_api_key():
