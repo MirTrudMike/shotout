@@ -10,8 +10,10 @@ The original script is never modified.
 import os
 import subprocess
 import sys
+import time
 
 PIDFILE = "/tmp/groq-voice.pid"
+TAIL_DELAY = 1.5  # seconds to keep recording after stop hotkey
 STATUS_FILE = "/tmp/groq-voice-status"
 ORIGINAL = os.path.expanduser("~/.local/bin/groq-voice")
 SHIMS_DIR = os.path.expanduser("~/.local/lib/groq-voice-shims")
@@ -30,7 +32,8 @@ def write_status(status: str) -> None:
 
 def main():
     if os.path.exists(PIDFILE):
-        # Recording is already active — next invocation stops and transcribes
+        # Recording is already active — wait for tail, then stop and transcribe
+        time.sleep(TAIL_DELAY)  # keep recording so last words are captured
         write_status("recognizing")
         try:
             subprocess.run([ORIGINAL] + sys.argv[1:])
