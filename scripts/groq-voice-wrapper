@@ -7,16 +7,21 @@ a visual indicator in the top bar.
 Usage: replace the hotkey command groq-voice → groq-voice-wrapper
 The original script is never modified.
 """
+import json
 import os
 import subprocess
 import sys
 import time
+from datetime import date
+from pathlib import Path
 
 PIDFILE = "/tmp/groq-voice.pid"
-TAIL_DELAY = 1.5  # seconds to keep recording after stop hotkey
+START_FILE = "/tmp/groq-voice-start"
 STATUS_FILE = "/tmp/groq-voice-status"
+STATS_FILE = Path.home() / ".local/share/groq-voice/stats.json"
 ORIGINAL = os.path.expanduser("~/.local/bin/groq-voice")
 SHIMS_DIR = os.path.expanduser("~/.local/lib/groq-voice-shims")
+TAIL_DELAY = 1.5  # seconds to keep recording after stop hotkey
 
 # Prepend shims dir so fake notify-send intercepts calls from the original script
 os.environ["PATH"] = SHIMS_DIR + ":" + os.environ.get("PATH", "")
@@ -30,17 +35,50 @@ def write_status(status: str) -> None:
         pass
 
 
+def write_stats(duration_secs: int) -> None:
+    today = date.today().isoformat()
+    stats: dict = {}
+    if STATS_FILE.exists():
+        try:
+            stats = json.loads(STATS_FILE.read_text())
+        except Exception:
+            pass
+    if today not in stats:
+        stats[today] = {"requests": 0, "seconds": 0}
+    stats[today]["requests"] += 1
+    stats[today]["seconds"] += max(0, duration_secs)
+    STATS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    STATS_FILE.write_text(json.dumps(stats, indent=2))
+
+
 def main():
     if os.path.exists(PIDFILE):
         # Recording is already active — wait for tail, then stop and transcribe
+        duration = 0
+        try:
+            with open(START_FILE) as f:
+                duration = int(time.time() - float(f.read()) + TAIL_DELAY)
+        except Exception:
+            pass
+
         time.sleep(TAIL_DELAY)  # keep recording so last words are captured
         write_status("recognizing")
         try:
             subprocess.run([ORIGINAL] + sys.argv[1:])
+            write_stats(duration)
         finally:
             write_status("idle")
+            try:
+                os.remove(START_FILE)
+            except OSError:
+                pass
     else:
         # No recording active — start one
+        try:
+            with open(START_FILE, "w") as f:
+                f.write(str(time.time()))
+        except OSError:
+            pass
         write_status("recording")
         subprocess.run([ORIGINAL] + sys.argv[1:])
         # Status intentionally stays "recording" until next invocation

@@ -5,27 +5,92 @@ import GLib from 'gi://GLib';
 import Gio from 'gi://Gio';
 import * as Main from 'resource:///org/gnome/shell/ui/main.js';
 import * as PanelMenu from 'resource:///org/gnome/shell/ui/panelMenu.js';
+import * as PopupMenu from 'resource:///org/gnome/shell/ui/popupMenu.js';
 
 const STATUS_FILE = '/tmp/groq-voice-status';
+const STATS_FILE = GLib.get_home_dir() + '/.local/share/groq-voice/stats.json';
 const POLL_INTERVAL_MS = 500;
 
 const VoiceIndicator = GObject.registerClass(
 class VoiceIndicator extends PanelMenu.Button {
     _init() {
-        super._init(0.0, 'Groq Voice Indicator', true);
+        super._init(0.0, 'Groq Voice', false);
 
         this._label = new St.Label({
-            text: '',
+            text: '🎤',
             y_align: Clutter.ActorAlign.CENTER,
             style: 'font-size: 13px; padding: 0 6px;',
         });
         this.add_child(this._label);
 
+        this._buildMenu();
+
         this._status = 'idle';
         this._recordingStartSec = 0;
         this._timeoutId = null;
 
-        this.hide();
+        this.show();
+    }
+
+    _buildMenu() {
+        const header = new PopupMenu.PopupMenuItem('Statistics', {reactive: false});
+        header.label.style = 'font-weight: bold; color: #aaa; font-size: 11px;';
+        this.menu.addMenuItem(header);
+
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+
+        this._todayItem = new PopupMenu.PopupMenuItem('', {reactive: false});
+        this.menu.addMenuItem(this._todayItem);
+
+        this._monthItem = new PopupMenu.PopupMenuItem('', {reactive: false});
+        this.menu.addMenuItem(this._monthItem);
+
+        this.menu.connect('open-state-changed', (_menu, isOpen) => {
+            if (isOpen) this._updateMenu();
+        });
+    }
+
+    _readStats() {
+        try {
+            const file = Gio.File.new_for_path(STATS_FILE);
+            const [ok, contents] = file.load_contents(null);
+            if (ok)
+                return JSON.parse(new TextDecoder().decode(contents));
+        } catch (_e) {}
+        return {};
+    }
+
+    _formatDuration(seconds) {
+        const h = Math.floor(seconds / 3600);
+        const m = Math.floor((seconds % 3600) / 60);
+        const s = seconds % 60;
+        if (h > 0) return `${h}h ${m}m`;
+        if (m > 0) return `${m}m ${s}s`;
+        return `${s}s`;
+    }
+
+    _updateMenu() {
+        const stats = this._readStats();
+        const now = new Date();
+        const today = now.toISOString().slice(0, 10);
+        const monthPrefix = today.slice(0, 7);
+
+        const td = stats[today] || {requests: 0, seconds: 0};
+        this._todayItem.label.set_text(
+            `Today    ${td.requests} req · ${this._formatDuration(td.seconds)}`
+        );
+
+        let mReq = 0, mSec = 0;
+        for (const [d, v] of Object.entries(stats)) {
+            if (d.startsWith(monthPrefix)) {
+                mReq += v.requests;
+                mSec += v.seconds;
+            }
+        }
+        const monthName = now.toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
+        this._monthItem.label.set_text(
+            `${monthName}    ${mReq} req · ${this._formatDuration(mSec)}`
+        );
     }
 
     startPolling() {
@@ -58,24 +123,18 @@ class VoiceIndicator extends PanelMenu.Button {
     _poll() {
         const status = this._readStatus();
 
-        // Transition into a new state
         if (status !== this._status) {
             this._status = status;
 
             if (status === 'recording') {
                 this._recordingStartSec = GLib.get_real_time() / 1_000_000;
-                this.show();
             } else if (status === 'recognizing') {
-                this._label.set_text('⏳ Распознаю...');
-                this.show();
+                this._label.set_text('⏳ Recognizing...');
             } else {
-                // idle or unknown — hide
-                this.hide();
-                return;
+                this._label.set_text('🎤');
             }
         }
 
-        // Keep timer updated while recording
         if (this._status === 'recording') {
             const elapsed = Math.floor(
                 GLib.get_real_time() / 1_000_000 - this._recordingStartSec
