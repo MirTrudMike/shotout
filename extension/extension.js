@@ -32,18 +32,40 @@ class VoiceIndicator extends PanelMenu.Button {
         this.show();
     }
 
+    // Creates a two-column stat row: "Label" on the left, "value" bold on the right.
+    // reactive:false + explicit opacity:1 prevents GNOME's :insensitive greying.
+    _makeStatRow(labelText) {
+        const item = new PopupMenu.PopupBaseMenuItem({reactive: false, can_focus: false});
+        item.style = 'opacity: 1;';
+
+        const nameLabel = new St.Label({
+            text: labelText,
+            x_expand: true,
+            style_class: 'dim-label',
+        });
+
+        const valueLabel = new St.Label({
+            text: '—',
+            style: 'font-weight: bold;',
+        });
+
+        item.add_child(nameLabel);
+        item.add_child(valueLabel);
+
+        return {item, valueLabel};
+    }
+
     _buildMenu() {
-        const header = new PopupMenu.PopupMenuItem('Statistics', {reactive: false});
-        header.label.style = 'font-weight: bold; color: #aaa; font-size: 11px;';
-        this.menu.addMenuItem(header);
+        // Standard GNOME section header with separator line
+        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem('Groq Voice'));
 
-        this.menu.addMenuItem(new PopupMenu.PopupSeparatorMenuItem());
+        const todayRow = this._makeStatRow('Today');
+        this._todayValue = todayRow.valueLabel;
+        this.menu.addMenuItem(todayRow.item);
 
-        this._todayItem = new PopupMenu.PopupMenuItem('', {reactive: false});
-        this.menu.addMenuItem(this._todayItem);
-
-        this._monthItem = new PopupMenu.PopupMenuItem('', {reactive: false});
-        this.menu.addMenuItem(this._monthItem);
+        const monthRow = this._makeStatRow('This month');
+        this._monthValue = monthRow.valueLabel;
+        this.menu.addMenuItem(monthRow.item);
 
         this.menu.connect('open-state-changed', (_menu, isOpen) => {
             if (isOpen) this._updateMenu();
@@ -76,8 +98,8 @@ class VoiceIndicator extends PanelMenu.Button {
         const monthPrefix = today.slice(0, 7);
 
         const td = stats[today] || {requests: 0, seconds: 0};
-        this._todayItem.label.set_text(
-            `Today    ${td.requests} req · ${this._formatDuration(td.seconds)}`
+        this._todayValue.set_text(
+            `${td.requests} req · ${this._formatDuration(td.seconds)}`
         );
 
         let mReq = 0, mSec = 0;
@@ -87,9 +109,8 @@ class VoiceIndicator extends PanelMenu.Button {
                 mSec += v.seconds;
             }
         }
-        const monthName = now.toLocaleDateString('en-US', {month: 'long', year: 'numeric'});
-        this._monthItem.label.set_text(
-            `${monthName}    ${mReq} req · ${this._formatDuration(mSec)}`
+        this._monthValue.set_text(
+            `${mReq} req · ${this._formatDuration(mSec)}`
         );
     }
 
