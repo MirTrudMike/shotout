@@ -14,9 +14,9 @@ const STATS_FILE  = GLib.get_home_dir() + '/.local/share/groq-voice/stats.json';
 const POLL_INTERVAL_MS = 500;
 const WARNING_SECS     = 10;   // start pulsing this many seconds before the limit
 
-const LABEL_STYLE        = 'font-size: 13px; padding: 0 6px;';
-const LABEL_STYLE_WARN   = 'font-size: 13px; padding: 0 6px; color: #ff7700;';
-const LABEL_STYLE_CANCEL = 'font-size: 13px; padding: 0 6px; color: #cc4444;';
+const LABEL_STYLE      = 'font-size: 13px; padding: 0 6px;';
+const LABEL_STYLE_WARN = 'font-size: 13px; padding: 0 6px; color: #ff7700;';
+const LABEL_STYLE_X    = 'font-size: 18px; padding: 0 6px; color: #cc4444;';
 
 const VoiceIndicator = GObject.registerClass(
 class VoiceIndicator extends PanelMenu.Button {
@@ -36,6 +36,8 @@ class VoiceIndicator extends PanelMenu.Button {
         this._recordingStartSec = 0;
         this._recordingLimitSec = 5 * 60;
         this._pulsing = false;
+        this._cancelAnimating = false;
+        this._cancelHoldId = null;
         this._timeoutId = null;
 
         this.show();
@@ -43,7 +45,6 @@ class VoiceIndicator extends PanelMenu.Button {
 
     // ── Cancel on click during recording ────────────────────────────────────
 
-    // During recording, a click cancels instead of opening the menu.
     vfunc_event(event) {
         if (this._status === 'recording' &&
             (event.type() === Clutter.EventType.BUTTON_PRESS ||
@@ -59,9 +60,53 @@ class VoiceIndicator extends PanelMenu.Button {
             GLib.file_set_contents(CANCEL_FILE, '1');
         } catch (_e) {}
         this._stopWarningPulse();
+        this._showCancelFeedback();
+    }
+
+    _showCancelFeedback() {
+        this._cancelAnimating = true;
+        this._label.remove_all_transitions();
+        this._label.opacity = 0;
         this._label.set_text('✗');
-        this._label.style = LABEL_STYLE_CANCEL;
-        // Status → idle will arrive via polling once watchdog handles the cancel
+        this._label.style = LABEL_STYLE_X;
+
+        // Fade in
+        this._label.ease({
+            opacity: 255,
+            duration: 350,
+            mode: Clutter.AnimationMode.EASE_OUT_SINE,
+            onComplete: () => {
+                // Hold, then fade out
+                this._cancelHoldId = GLib.timeout_add(GLib.PRIORITY_DEFAULT, 1200, () => {
+                    this._cancelHoldId = null;
+                    this._label.ease({
+                        opacity: 0,
+                        duration: 700,
+                        mode: Clutter.AnimationMode.EASE_IN_SINE,
+                        onComplete: () => {
+                            this._cancelAnimating = false;
+                            this._label.remove_all_transitions();
+                            this._label.opacity = 255;
+                            this._label.set_text('🎤');
+                            this._label.style = LABEL_STYLE;
+                        },
+                    });
+                    return GLib.SOURCE_REMOVE;
+                });
+            },
+        });
+    }
+
+    _abortCancelAnimation() {
+        if (!this._cancelAnimating) return;
+        this._cancelAnimating = false;
+        if (this._cancelHoldId !== null) {
+            GLib.source_remove(this._cancelHoldId);
+            this._cancelHoldId = null;
+        }
+        this._label.remove_all_transitions();
+        this._label.opacity = 255;
+        this._label.style = LABEL_STYLE;
     }
 
     // ── Menu ────────────────────────────────────────────────────────────────
@@ -139,7 +184,6 @@ class VoiceIndicator extends PanelMenu.Button {
 
     _pulseStep(fadingOut) {
         if (!this._pulsing) {
-            // Stopped externally — restore immediately
             this._label.remove_all_transitions();
             this._label.opacity = 255;
             this._label.style = LABEL_STYLE;
@@ -193,7 +237,13 @@ class VoiceIndicator extends PanelMenu.Button {
             const [ok, contents] = file.load_contents(null);
             if (ok) return parseInt(new TextDecoder().decode(contents).trim(), 10);
         } catch (_e) {}
-        return 5 * 60; // fallback if file missing
+        return 5 * 60;
+    }
+
+    _resetLabelStyle() {
+        this._label.remove_all_transitions();
+        this._label.opacity = 255;
+        this._label.style = LABEL_STYLE;
     }
 
     _poll() {
@@ -203,11 +253,19 @@ class VoiceIndicator extends PanelMenu.Button {
             this._status = status;
 
             if (status === 'recording') {
+                // Always start clean, even if cancel animation was playing
+                this._abortCancelAnimation();
+                this._stopWarningPulse();
+                this._resetLabelStyle();
                 this._recordingStartSec = GLib.get_real_time() / 1_000_000;
                 this._recordingLimitSec = this._readLimit();
             } else {
                 this._stopWarningPulse();
-                this._label.set_text(status === 'recognizing' ? '⏳ RECOGNIZING' : '🎤');
+                // Don't interrupt cancel animation — it will restore 🎤 on its own
+                if (!this._cancelAnimating) {
+                    this._resetLabelStyle();
+                    this._label.set_text(status === 'recognizing' ? '⏳ Recognizing...' : '🎤');
+                }
             }
         }
 
@@ -225,6 +283,7 @@ class VoiceIndicator extends PanelMenu.Button {
     }
 
     destroy() {
+        this._abortCancelAnimation();
         this._stopWarningPulse();
         this.stopPolling();
         super.destroy();
